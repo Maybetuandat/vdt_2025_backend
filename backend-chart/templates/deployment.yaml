@@ -1,36 +1,82 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "django-chart.fullname" . }}
+  name: {{ include "backend-chart.fullname" . }}
   labels:
-    app: {{ include "django-chart.name" . }}
+    {{- include "backend-chart.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "django-chart.name" . }}
+      {{- include "backend-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ include "django-chart.name" . }}
+        {{- include "backend-chart.selectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: DATABASE_HOST
-              value: {{ .Values.database.host | quote }}
-            - name: DATABASE_PORT
-              value: {{ .Values.database.port | quote }}
-            - name: DATABASE_NAME
-              value: {{ .Values.database.name | quote }}
-            - name: DATABASE_USER
+            # Database connection
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}"
+            - name: SPRING_DATASOURCE_USERNAME
               value: {{ .Values.database.user | quote }}
-            - name: DATABASE_PASSWORD
+            - name: SPRING_DATASOURCE_PASSWORD
               value: {{ .Values.database.password | quote }}
+            - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
+              value: "org.postgresql.Driver"
+            
+            # JPA/Hibernate settings
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: "update"
+            - name: SPRING_JPA_SHOW_SQL
+              value: "true"
+            - name: SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT
+              value: "org.hibernate.dialect.PostgreSQLDialect"
+            - name: SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL
+              value: "true"
+            - name: SPRING_JPA_PROPERTIES_HIBERNATE_JDBC_LOB_NON_CONTEXTUAL_CREATION
+              value: "true"
+            
+            # Server settings
+            - name: SERVER_PORT
+              value: {{ .Values.env.SERVER_PORT | quote }}
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ .Values.env.SPRING_PROFILES_ACTIVE | quote }}
+            
+            # Application name
+            - name: SPRING_APPLICATION_NAME
+              value: "student-management-api"
+              
           ports:
-            - containerPort: 8000
-          command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          
+          {{- if .Values.healthCheck.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.healthCheck.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.healthCheck.readinessProbe | nindent 12 }}
+          {{- end }}
+          
           resources:
-{{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.resources | nindent 12 }}
+            
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
