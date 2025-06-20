@@ -125,17 +125,23 @@ pipeline {
             }
         }
         
-        stage('Update Helm Values') {
+       stage('Update Helm Values') {
             steps {
                 script {  
                     dir('config-repo') {
+                        def tagName = env.TAG_NAME
+                        echo "Updating with tag: ${tagName}"
+                        
                         sh """
-                            sed -i 's/^  tag.*/  tag: "${env.TAG_NAME}"/' helm-values/values-prod.yaml
+                            sed -i 's/^  tag:.*/  tag: "${tagName}"/' helm-values/values-prod.yaml
                         """
+                        
+                      
+                        sh "grep 'tag:' helm-values/values-prod.yaml"
                     }
                 }
             }
-        }
+    }
         
         stage('Push Config Changes') {
             steps {
