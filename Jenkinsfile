@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'docker_builder'  // Sử dụng agent docker_builder
+    }
     
     environment {
         IMAGE_NAME = 'maybetuandat/vdt_backend'
@@ -7,6 +9,16 @@ pipeline {
     }
     
     stages {
+        stage('Agent Information') {
+            steps {
+                echo "🔍 Running on agent: ${env.NODE_NAME}"
+                echo "📍 Workspace: ${env.WORKSPACE}"
+                sh 'whoami'
+                sh 'pwd'
+                sh 'uname -a'
+            }
+        }
+        
         stage('Checkout Source Code') {
             steps {
                 echo "🔍 Cloning source code..."
@@ -68,6 +80,7 @@ pipeline {
                     }
                     
                     echo "✅ Docker is available!"
+                    sh 'docker --version'
                 }
             }
         }
