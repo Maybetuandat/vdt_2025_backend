@@ -13,8 +13,8 @@ pipeline {
     stages {
         stage('Agent Information') {
             steps {
-                echo "🔍 Running on agent: ${env.NODE_NAME}"
-                echo "📍 Workspace: ${env.WORKSPACE}"
+                echo " Running on agent: ${env.NODE_NAME}"
+                echo " Workspace: ${env.WORKSPACE}"
                 sh 'whoami'
                 sh 'pwd'
                 sh 'uname -a'
@@ -23,10 +23,10 @@ pipeline {
         
         stage('Checkout Source Code') {
             steps {
-                echo "🔍 Cloning source code..."
+                echo " Cloning source code..."
                 checkout scm
                 
-                echo "✅ Clone completed!"
+                echo " Clone completed!"
                 sh 'ls -la'
             }
         }
@@ -34,9 +34,9 @@ pipeline {
         stage('Get Git Tag Version') {
             steps {
                 script {
-                    echo "🏷️ Getting Git tag version..."
+                    echo " Getting Git tag version..."
                     
-                    // Debug: Show git info
+                    
                     sh 'git log --oneline -n 5'
                     sh 'git tag --list'
                     
@@ -47,59 +47,22 @@ pipeline {
                     
                     env.TAG_NAME = tagVersion
                     
-                    echo "📌 Using tag version: ${env.TAG_NAME}"
-                    echo "🐳 Docker image will be: ${env.IMAGE_NAME}:${env.TAG_NAME}"
+                    echo " Using tag version: ${env.TAG_NAME}"
+                    echo " Docker image will be: ${env.IMAGE_NAME}:${env.TAG_NAME}"
                 }
             }
-        }
-        
-        stage('Verify Dockerfile') {
-            steps {
-                script {
-                    echo "📄 Checking Dockerfile..."
-                    
-                    if (fileExists('Dockerfile')) {
-                        echo "✅ Dockerfile found!"
-                        sh 'head -10 Dockerfile'
-                    } else {
-                        error "❌ Dockerfile not found! Please create Dockerfile in repository root."
-                    }
-                }
-            }
-        }
-        
-        stage('Check Docker') {
-            steps {
-                script {
-                    echo "🐳 Checking Docker availability..."
-                    
-                    def dockerCheck = sh(script: 'which docker', returnStatus: true)
-                    if (dockerCheck != 0) {
-                        error "❌ Docker not found! Please install Docker or use different approach."
-                    }
-                    
-                    def dockerStatus = sh(script: 'docker info', returnStatus: true)
-                    if (dockerStatus != 0) {
-                        error "❌ Docker daemon not running! Please start Docker daemon."
-                    }
-                    
-                    echo "✅ Docker is available!"
-                    sh 'docker --version'
-                }
-            }
-        }
-        
+        }    
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "🔨 Building Docker image: ${env.IMAGE_NAME}:${env.TAG_NAME}"
+                    echo " Building Docker image: ${env.IMAGE_NAME}:${env.TAG_NAME}"
                     
                     sh """
                         docker build -t ${env.IMAGE_NAME}:${env.TAG_NAME} .
                         docker tag ${env.IMAGE_NAME}:${env.TAG_NAME} ${env.IMAGE_NAME}:latest
                     """
                     
-                    echo "✅ Docker image built successfully!"
+                    echo " Docker image built successfully!"
                     sh "docker images | grep ${env.IMAGE_NAME}"
                 }
             }
@@ -108,7 +71,7 @@ pipeline {
         stage('Test Docker Image') {
             steps {
                 script {
-                    echo "🧪 Testing Docker image..."
+                    echo " Testing Docker image..."
                     sh """
                         echo "Testing if image can start..."
                         docker run --rm ${env.IMAGE_NAME}:${env.TAG_NAME} java -version || echo "Image test completed"
@@ -120,7 +83,7 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    echo "🚀 Pushing image to Docker Hub..."
+                    echo " Pushing image to Docker Hub..."
                     
                     withCredentials([usernamePassword(
                         credentialsId: env.DOCKER_HUB_CREDENTIALS, 
@@ -133,33 +96,29 @@ pipeline {
                     sh """
                         docker push ${env.IMAGE_NAME}:${env.TAG_NAME}
                     """
-                    
-                    echo "✅ Successfully pushed to Docker Hub!"
+                    echo " Successfully pushed to Docker Hub!"
                 }
             }
-        }
-        
-        // ============ NEW STAGES FOR CONFIG REPO UPDATE ============
-        
+        }     
         stage('Clone Config Repo') {
             steps {
                 script {
-                    echo "📦 Cloning config repository..."
+                    echo " Cloning config repository..."
                     
-                    // Create separate directory for config repo
+                    
                     sh 'mkdir -p config-repo'
                     
                     dir('config-repo') {
-                        // Clone config repo with credentials
+                    
                         withCredentials([gitUsernamePassword(credentialsId: env.GITHUB_CREDENTIALS, gitToolName: 'Default')]) {
                             sh """
                                 git clone ${env.CONFIG_REPO_URL} .
-                                git config user.email "maybetuandat@example.com"
-                                git config user.name "Jenkins CI/CD"
+                                git config user.email "maybetuandat@trinhvinhtuandat05102003@gmail.com"
+                                git config user.name "Jenkins CI/CD Backend"
                             """
                         }
                         
-                        echo "✅ Config repo cloned successfully!"
+                        echo " Config repo cloned successfully!"
                         sh 'ls -la'
                     }
                 }
@@ -168,31 +127,11 @@ pipeline {
         
         stage('Update Helm Values') {
             steps {
-                script {
-                    echo "🔧 Updating Helm values with new image version..."
-                    
+                script {  
                     dir('config-repo') {
-                        // Show current values
-                        echo "Current helm values:"
-                        sh 'cat helm-values/values-prod.yaml | grep -A2 -B2 tag || echo "Tag not found in current format"'
-                        
-                        // Update image tag in values file
                         sh """
-                            # Method 1: Update tag field
                             sed -i 's/^  tag.*/  tag: "${env.TAG_NAME}"/' helm-values/values-prod.yaml
-                            
-                            # Method 2: If tag is in different format, try this alternative
-                            sed -i 's/tag: .*/tag: "${env.TAG_NAME}"/' helm-values/values-prod.yaml
                         """
-                        
-                        // Show updated values
-                        echo "Updated helm values:"
-                        sh 'cat helm-values/values-prod.yaml | grep -A2 -B2 tag'
-                        
-                        // Show git diff
-                        sh 'git diff helm-values/values-prod.yaml || echo "No changes detected"'
-                        
-                        echo "✅ Helm values updated successfully!"
                     }
                 }
             }
@@ -201,10 +140,10 @@ pipeline {
         stage('Push Config Changes') {
             steps {
                 script {
-                    echo "📤 Pushing changes to config repository..."
+                    echo "Pushing changes to config repository..."
                     
                     dir('config-repo') {
-                        // Check if there are changes to commit
+                     
                         def gitStatus = sh(
                             script: 'git status --porcelain',
                             returnStdout: true
@@ -215,7 +154,7 @@ pipeline {
                             
                             sh """
                                 git add .
-                                git commit -m "🚀 Update image version to ${env.TAG_NAME}
+                                git commit -m " Update image version to ${env.TAG_NAME}
                                 
                                 - Updated helm-values/values-prod.yaml
                                 - Image: ${env.IMAGE_NAME}:${env.TAG_NAME}
@@ -228,9 +167,9 @@ pipeline {
                                 sh 'git push origin main'
                             }
                             
-                            echo "✅ Config changes pushed successfully!"
+                            echo " Config changes pushed successfully!"
                         } else {
-                            echo "⚠️ No changes detected in config repo"
+                            echo " No changes detected in config repo"
                         }
                     }
                 }
@@ -240,25 +179,25 @@ pipeline {
     
     post {
         always {
-            echo "🧹 Cleaning up..."
+            echo " Cleaning up..."
             sh """
                 docker rmi ${env.IMAGE_NAME}:${env.TAG_NAME} || true
                 docker rmi ${env.IMAGE_NAME}:latest || true
                 docker system prune -f || true
             """
             
-            // Clean workspace
+          
             cleanWs()
         }
         success {
-            echo "🎉 BUILD SUCCESS!"
-            echo "✅ Source code built and pushed: ${env.IMAGE_NAME}:${env.TAG_NAME}"
-            echo "✅ Config repository updated with new version"
-            echo "🔗 Docker Hub: https://hub.docker.com/r/maybetuandat/vdt_backend"
+            echo "BUILD SUCCESS!"
+            echo "Source code built and pushed: ${env.IMAGE_NAME}:${env.TAG_NAME}"
+            echo "Config repository updated with new version"
+            echo "Docker Hub: https://hub.docker.com/r/maybetuandat/vdt_backend"
         }
         failure {
-            echo "💥 BUILD FAILED!"
-            echo "❌ Please check the logs above"
+            echo "BUILD FAILED!"
+            echo "Please check the logs above"
         }
     }
 }
