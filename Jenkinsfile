@@ -1,11 +1,13 @@
 pipeline {
     agent {
-        label 'docker_builder'  // Sử dụng agent docker_builder
+        label 'docker_builder'
     }
     
     environment {
         IMAGE_NAME = 'maybetuandat/vdt_backend'
-        DOCKER_HUB_CREDENTIALS = 'dockerhub_credential' 
+        DOCKER_HUB_CREDENTIALS = 'dockerhub_credential'
+        GITHUB_CREDENTIALS = 'github_token' 
+        CONFIG_REPO_URL = 'https://github.com/maybetuandat/vdt_2025_backend_config.git' 
     }
     
     stages {
@@ -34,8 +36,12 @@ pipeline {
                 script {
                     echo "🏷️ Getting Git tag version..."
                     
+                    // Debug: Show git info
+                    sh 'git log --oneline -n 5'
+                    sh 'git tag --list'
+                    
                     def tagVersion = sh(
-                        script: 'git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD', 
+                        script: 'git describe --tags --exact-match 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || git rev-parse --short HEAD', 
                         returnStdout: true
                     ).trim()
                     
@@ -67,13 +73,11 @@ pipeline {
                 script {
                     echo "🐳 Checking Docker availability..."
                     
-                    // Check if docker command exists
                     def dockerCheck = sh(script: 'which docker', returnStatus: true)
                     if (dockerCheck != 0) {
                         error "❌ Docker not found! Please install Docker or use different approach."
                     }
                     
-                    // Check docker daemon
                     def dockerStatus = sh(script: 'docker info', returnStatus: true)
                     if (dockerStatus != 0) {
                         error "❌ Docker daemon not running! Please start Docker daemon."
@@ -128,11 +132,107 @@ pipeline {
                     
                     sh """
                         docker push ${env.IMAGE_NAME}:${env.TAG_NAME}
-                        docker push ${env.IMAGE_NAME}:latest
                     """
                     
                     echo "✅ Successfully pushed to Docker Hub!"
-                    echo "🔗 Image available at: https://hub.docker.com/r/maybetuandat/vdt_backend"
+                }
+            }
+        }
+        
+        // ============ NEW STAGES FOR CONFIG REPO UPDATE ============
+        
+        stage('Clone Config Repo') {
+            steps {
+                script {
+                    echo "📦 Cloning config repository..."
+                    
+                    // Create separate directory for config repo
+                    sh 'mkdir -p config-repo'
+                    
+                    dir('config-repo') {
+                        // Clone config repo with credentials
+                        withCredentials([gitUsernamePassword(credentialsId: env.GITHUB_CREDENTIALS, gitToolName: 'Default')]) {
+                            sh """
+                                git clone ${env.CONFIG_REPO_URL} .
+                                git config user.email "maybetuandat@example.com"
+                                git config user.name "Jenkins CI/CD"
+                            """
+                        }
+                        
+                        echo "✅ Config repo cloned successfully!"
+                        sh 'ls -la'
+                    }
+                }
+            }
+        }
+        
+        stage('Update Helm Values') {
+            steps {
+                script {
+                    echo "🔧 Updating Helm values with new image version..."
+                    
+                    dir('config-repo') {
+                        // Show current values
+                        echo "Current helm values:"
+                        sh 'cat helm-values/values-prod.yaml | grep -A2 -B2 tag || echo "Tag not found in current format"'
+                        
+                        // Update image tag in values file
+                        sh """
+                            # Method 1: Update tag field
+                            sed -i 's/^  tag.*/  tag: "${env.TAG_NAME}"/' helm-values/values-prod.yaml
+                            
+                            # Method 2: If tag is in different format, try this alternative
+                            sed -i 's/tag: .*/tag: "${env.TAG_NAME}"/' helm-values/values-prod.yaml
+                        """
+                        
+                        // Show updated values
+                        echo "Updated helm values:"
+                        sh 'cat helm-values/values-prod.yaml | grep -A2 -B2 tag'
+                        
+                        // Show git diff
+                        sh 'git diff helm-values/values-prod.yaml || echo "No changes detected"'
+                        
+                        echo "✅ Helm values updated successfully!"
+                    }
+                }
+            }
+        }
+        
+        stage('Push Config Changes') {
+            steps {
+                script {
+                    echo "📤 Pushing changes to config repository..."
+                    
+                    dir('config-repo') {
+                        // Check if there are changes to commit
+                        def gitStatus = sh(
+                            script: 'git status --porcelain',
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (gitStatus) {
+                            echo "Changes detected, committing and pushing..."
+                            
+                            sh """
+                                git add .
+                                git commit -m "🚀 Update image version to ${env.TAG_NAME}
+                                
+                                - Updated helm-values/values-prod.yaml
+                                - Image: ${env.IMAGE_NAME}:${env.TAG_NAME}
+                                - Build: ${env.BUILD_NUMBER}
+                                - Jenkins Job: ${env.JOB_NAME}"
+                            """
+                            
+                            // Push with credentials
+                            withCredentials([gitUsernamePassword(credentialsId: env.GITHUB_CREDENTIALS, gitToolName: 'Default')]) {
+                                sh 'git push origin main'
+                            }
+                            
+                            echo "✅ Config changes pushed successfully!"
+                        } else {
+                            echo "⚠️ No changes detected in config repo"
+                        }
+                    }
                 }
             }
         }
@@ -140,18 +240,21 @@ pipeline {
     
     post {
         always {
-            echo "🧹 Cleaning up local Docker images..."
+            echo "🧹 Cleaning up..."
             sh """
                 docker rmi ${env.IMAGE_NAME}:${env.TAG_NAME} || true
                 docker rmi ${env.IMAGE_NAME}:latest || true
                 docker system prune -f || true
             """
+            
+            // Clean workspace
+            cleanWs()
         }
         success {
             echo "🎉 BUILD SUCCESS!"
-            echo "✅ Source code cloned"
-            echo "✅ Docker image built: ${env.IMAGE_NAME}:${env.TAG_NAME}"
-            echo "✅ Image pushed to Docker Hub"
+            echo "✅ Source code built and pushed: ${env.IMAGE_NAME}:${env.TAG_NAME}"
+            echo "✅ Config repository updated with new version"
+            echo "🔗 Docker Hub: https://hub.docker.com/r/maybetuandat/vdt_backend"
         }
         failure {
             echo "💥 BUILD FAILED!"
