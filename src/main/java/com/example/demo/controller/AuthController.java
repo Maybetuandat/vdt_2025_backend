@@ -30,18 +30,14 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
         try {
-            System.out.println("=== LOGIN ATTEMPT ===");
-            System.out.println("Username: " + loginRequest.getUsername());
-            System.out.println("Password: " + loginRequest.getPassword());
+          
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             loginRequest.getUsername(),
                             loginRequest.getPassword()
                     )
             );
-            System.out.println("Authentication successful for user: " + loginRequest.getUsername() + " " + loginRequest.getPassword());
-            System.out.println("Roles: " + authentication.getAuthorities());
-
+          
             SecurityContextHolder.getContext().setAuthentication(authentication);
             String jwt = jwtUtil.generateJwtToken(authentication);
 

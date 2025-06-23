@@ -31,9 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 
         try {
-             System.out.println("=== JWT FILTER RUNNING ===");
-    System.out.println("Request URI: " + request.getRequestURI());
-    System.out.println("Authorization header: " + request.getHeader("Authorization"));
+            
             String jwt = parseJwt(request);
             if (jwt != null && jwtUtil.validateJwtToken(jwt)) {
                 String username = jwtUtil.getUserNameFromJwtToken(jwt);
